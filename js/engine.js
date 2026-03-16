@@ -18,11 +18,15 @@ class Engine {
 
     setupInput() {
         window.addEventListener('keydown', (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
             this.keys[e.code] = true;
             e.preventDefault();
         });
 
         window.addEventListener('keyup', (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
             this.keys[e.code] = false;
             e.preventDefault();
         });
