@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Super Smash Cats - A fun 2D cat fighting game with Player vs Player, Player vs Bot, and Online PvP modes!">
+    <title>Super Smash Cats - Cat Fighting Game</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="menu-overlay">
+            <div class="menu-content">
+                <h1 class="game-title">
+                    <span class="title-cat">🐱</span>
+                    <span class="title-text">SUPER SMASH CATS</span>
+                    <span class="title-cat">🐱</span>
+                </h1>
+                <p class="subtitle">Choose your battle!</p>
+                <div class="menu-buttons">
+                    <button id="btn-pvb" class="menu-btn pvb-btn">
+                        <span class="btn-icon">🤖</span>
+                        <span class="btn-label">Player vs Bot</span>
+                    </button>
+                    <button id="btn-pvp" class="menu-btn pvp-btn">
+                        <span class="btn-icon">👥</span>
+                        <span class="btn-label">Player vs Player</span>
+                    </button>
+                    <button id="btn-online" class="menu-btn online-btn">
+                        <span class="btn-icon">🌐</span>
+                        <span class="btn-label">Online PvP</span>
+                    </button>
+                </div>
+                <div class="controls-hint">
+                    <div class="control-group">
+                        <h3>Player 1</h3>
+                        <p>WASD + F/G</p>
+                    </div>
+                    <div class="control-group">
+                        <h3>Player 2</h3>
+                        <p>Arrows + Num1/Num2</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ONLINE MULTIPLAYER LOBBY -->
+        <div id="lobby-overlay" class="hidden">
+            <div id="lobby-panel">
+                <div id="lobby-title">🌐 ONLINE PVP</div>
+                <div id="lobby-status"></div>
+
+                <div id="lobby-menu">
+                    <button id="btn-host" class="lobby-btn">
+                        <span class="lobby-btn-icon">📡</span>
+                        HOST GAME
+                    </button>
+                    <div id="lobby-divider">— OR —</div>
+                    <div id="join-section">
+                        <input id="join-code-input" type="text" maxlength="4" placeholder="ROOM CODE"
+                            spellcheck="false" autocomplete="off">
+                        <button id="btn-join" class="lobby-btn lobby-btn-join">
+                            <span class="lobby-btn-icon">🔗</span>
+                            JOIN GAME
+                        </button>
+                    </div>
+                </div>
+
+                <div id="lobby-waiting" class="hidden">
+                    <div id="lobby-room-code-display">
+                        <div id="lobby-room-label">ROOM CODE</div>
+                        <div id="lobby-room-code">----</div>
+                        <div id="lobby-room-hint">Share this code with your friend</div>
+                    </div>
+                    <div id="lobby-connection-status">
+                        <span id="lobby-dot" class="pulse-dot"></span>
+                        <span id="lobby-connection-text">Waiting for player...</span>
+                    </div>
+                </div>
+
+                <button id="btn-lobby-back" class="lobby-btn lobby-btn-back">
+                    ◀ BACK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/effects.js"></script>
+    <script src="js/fighter.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/game.js"></script>
+</body>
+
+</html>
