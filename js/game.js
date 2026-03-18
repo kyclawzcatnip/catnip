@@ -10,6 +10,11 @@ class Game {
         this.stateTimer = 0;
         this.time = 0;
 
+        // Power-ups
+        this.powerUps = [];
+        this.powerUpTimer = 0;
+        this.powerUpInterval = 8 + Math.random() * 7; // 8-15 seconds
+
         this.fighter1 = null;
         this.fighter2 = null;
         this.botAI = new BotAI();
@@ -234,6 +239,9 @@ class Game {
         this.state = 'roundStart';
         this.stateTimer = 0;
         effects.clear();
+        this.powerUps = [];
+        this.powerUpTimer = 0;
+        this.powerUpInterval = 8 + Math.random() * 7;
 
         if (this.round <= 2 || (this.fighter1.wins < 2 && this.fighter2.wins < 2)) {
             gameUI.showRoundAnnouncement(`ROUND ${this.round}`);
@@ -427,7 +435,12 @@ class Game {
                 f2wins: this.fighter2.wins,
                 stateTimer: Math.round(this.stateTimer * 100) / 100,
                 // Send announcement info so guest can display it
-                announcement: gameUI.showRoundText ? gameUI.roundText : null
+                announcement: gameUI.showRoundText ? gameUI.roundText : null,
+                // Send power-ups for guest rendering
+                powerUps: this.powerUps.map(p => ({
+                    x: Math.round(p.x), y: Math.round(p.y),
+                    type: p.type, time: Math.round(p.time * 100) / 100
+                }))
             };
             NetworkManager.send(stateData);
         }
@@ -473,7 +486,10 @@ class Game {
             comboCount: f.comboCount,
             comboTimer: Math.round(f.comboTimer * 1000) / 1000,
             hasHit: f.hasHit,
-            wins: f.wins
+            wins: f.wins,
+            regenTimer: Math.round(f.regenTimer * 100) / 100,
+            shieldBuff: f.shieldBuff,
+            shieldTimer: Math.round(f.shieldTimer * 100) / 100
         };
     }
 
@@ -520,6 +536,11 @@ class Game {
         } else if (!data.announcement) {
             this._lastAnnouncement = null;
         }
+
+        // Apply power-ups from host
+        if (data.powerUps) {
+            this.powerUps = data.powerUps;
+        }
     }
 
     applyFighterState(fighter, data) {
@@ -542,6 +563,10 @@ class Game {
         fighter.comboTimer = data.comboTimer;
         fighter.hasHit = data.hasHit;
         fighter.wins = data.wins;
+        // Buff states
+        if (data.regenTimer !== undefined) fighter.regenTimer = data.regenTimer;
+        if (data.shieldBuff !== undefined) fighter.shieldBuff = data.shieldBuff;
+        if (data.shieldTimer !== undefined) fighter.shieldTimer = data.shieldTimer;
     }
 
     // ===== HIT DETECTION =====
@@ -753,6 +778,9 @@ class Game {
             this.fighter1.update(dt, this.fighter2);
             this.fighter2.update(dt, this.fighter1);
             this.checkHits();
+
+            // Power-up system
+            this.updatePowerUps(dt);
         }
 
         // Round end / match end - still update physics for falling bodies
@@ -806,6 +834,13 @@ class Game {
         // Draw effects
         effects.draw(ctx);
 
+        // Draw power-ups
+        this.drawPowerUps(ctx);
+
+        // Draw buff indicators on fighters
+        if (this.fighter1) this.drawBuffIndicators(ctx, this.fighter1);
+        if (this.fighter2) this.drawBuffIndicators(ctx, this.fighter2);
+
         // Draw HUD
         if (this.fighter1 && this.fighter2) {
             gameUI.drawHUD(ctx, this.fighter1, this.fighter2, this.timer, this.round);
@@ -847,6 +882,144 @@ class Game {
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ef4444';
         ctx.fillText(this.netDisconnectMsg, W / 2, H / 2);
+        ctx.restore();
+    }
+
+    // ===== POWER-UP SYSTEM =====
+
+    spawnPowerUp() {
+        const types = ['regen', 'shield'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        const x = 100 + Math.random() * 760; // within arena bounds
+        this.powerUps.push({
+            x: x,
+            y: -20,
+            type: type,
+            time: 0,
+            collected: false
+        });
+    }
+
+    updatePowerUps(dt) {
+        // Spawn timer
+        this.powerUpTimer += dt;
+        if (this.powerUpTimer >= this.powerUpInterval) {
+            this.powerUpTimer = 0;
+            this.powerUpInterval = 8 + Math.random() * 7;
+            this.spawnPowerUp();
+        }
+
+        // Update existing power-ups
+        for (let i = this.powerUps.length - 1; i >= 0; i--) {
+            const p = this.powerUps[i];
+            p.time += dt;
+            p.y += 40 * dt; // slow fall speed
+
+            // Remove if fallen below ground
+            if (p.y > GROUND_Y + 20) {
+                this.powerUps.splice(i, 1);
+                continue;
+            }
+
+            // Check collision with fighters
+            const pSize = 18;
+            const fighters = [this.fighter1, this.fighter2];
+            for (const f of fighters) {
+                if (f.state === STATES.KO) continue;
+                const dx = Math.abs(p.x - f.x);
+                const dy = Math.abs(p.y - (f.y - f.height / 2));
+                if (dx < pSize + f.width / 2 && dy < pSize + f.height / 2) {
+                    // Collect!
+                    this.applyPowerUp(f, p.type);
+                    effects.spawnHitParticles(p.x, p.y, p.type === 'regen' ? '#22c55e' : '#3b82f6', 10);
+                    effects.addFloatingText(p.x, p.y - 20,
+                        p.type === 'regen' ? '+REGEN' : '+SHIELD',
+                        p.type === 'regen' ? '#22c55e' : '#3b82f6', 18);
+                    audio.playPowerUp();
+                    this.powerUps.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    applyPowerUp(fighter, type) {
+        if (type === 'regen') {
+            fighter.regenTimer = 3;
+            fighter.regenTotal = 0;
+        } else if (type === 'shield') {
+            fighter.shieldBuff = true;
+            fighter.shieldTimer = 5;
+        }
+    }
+
+    drawPowerUps(ctx) {
+        for (const p of this.powerUps) {
+            const bob = Math.sin(p.time * 3) * 4;
+            const px = p.x;
+            const py = p.y + bob;
+            const glow = 0.4 + Math.sin(p.time * 4) * 0.2;
+
+            ctx.save();
+
+            // Glow
+            ctx.shadowColor = p.type === 'regen' ? '#22c55e' : '#3b82f6';
+            ctx.shadowBlur = 15 + Math.sin(p.time * 5) * 5;
+
+            // Background circle
+            ctx.fillStyle = p.type === 'regen'
+                ? `rgba(34, 197, 94, ${glow})`
+                : `rgba(59, 130, 246, ${glow})`;
+            ctx.beginPath();
+            ctx.arc(px, py, 16, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Border
+            ctx.strokeStyle = p.type === 'regen' ? '#4ade80' : '#60a5fa';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+
+            // Icon
+            ctx.font = '16px Outfit';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(p.type === 'regen' ? '❤️' : '🛡️', px, py);
+
+            ctx.restore();
+        }
+    }
+
+    drawBuffIndicators(ctx, fighter) {
+        let indicators = [];
+        if (fighter.regenTimer > 0) {
+            indicators.push({ icon: '❤️', color: '#22c55e', timer: fighter.regenTimer });
+        }
+        if (fighter.shieldBuff) {
+            indicators.push({ icon: '🛡️', color: '#3b82f6', timer: fighter.shieldTimer });
+        }
+        if (indicators.length === 0) return;
+
+        ctx.save();
+        indicators.forEach((ind, i) => {
+            const bx = fighter.x - 12 + i * 22;
+            const by = fighter.y - fighter.height - 20;
+
+            // Small icon above head
+            ctx.font = '12px Outfit';
+            ctx.textAlign = 'center';
+            ctx.fillText(ind.icon, bx, by);
+
+            // Timer bar underneath
+            const maxTime = ind.icon === '❤️' ? 3 : 5;
+            const ratio = ind.timer / maxTime;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(bx - 8, by + 4, 16, 3);
+            ctx.fillStyle = ind.color;
+            ctx.fillRect(bx - 8, by + 4, 16 * ratio, 3);
+        });
         ctx.restore();
     }
 }

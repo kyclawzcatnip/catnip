@@ -62,6 +62,12 @@ class Fighter {
 
         // Grounded
         this.grounded = true;
+
+        // Power-up buffs
+        this.regenTimer = 0;       // seconds remaining
+        this.regenTotal = 0;       // HP healed so far this regen
+        this.shieldBuff = false;   // 3x block effectiveness
+        this.shieldTimer = 0;      // seconds remaining
     }
 
     reset(x, facingRight) {
@@ -83,6 +89,12 @@ class Fighter {
         this.hurtTimer = 0;
         this.facingRight = facingRight;
         this.grounded = true;
+
+        // Reset buffs
+        this.regenTimer = 0;
+        this.regenTotal = 0;
+        this.shieldBuff = false;
+        this.shieldTimer = 0;
     }
 
     get centerX() { return this.x; }
@@ -151,8 +163,9 @@ class Fighter {
         let blocked = false;
 
         if (this.state === STATES.BLOCK) {
-            actualDamage = Math.floor(damage * 0.25);
-            knockbackForce *= 0.3;
+            const blockMult = this.shieldBuff ? 0.08 : 0.25;
+            actualDamage = Math.floor(damage * blockMult);
+            knockbackForce *= this.shieldBuff ? 0.15 : 0.3;
             blocked = true;
             audio.playBlock();
         }
@@ -195,6 +208,34 @@ class Fighter {
         if (this.displayHealth > this.health) {
             this.displayHealth -= (this.displayHealth - this.health) * 8 * dt;
             if (this.displayHealth - this.health < 0.5) this.displayHealth = this.health;
+        }
+        if (this.displayHealth < this.health) {
+            this.displayHealth += (this.health - this.displayHealth) * 8 * dt;
+            if (this.health - this.displayHealth < 0.5) this.displayHealth = this.health;
+        }
+
+        // Regen buff tick
+        if (this.regenTimer > 0 && this.state !== STATES.KO) {
+            this.regenTimer -= dt;
+            const healThisTick = (10 / 3) * dt; // 10 HP over 3s
+            const maxHeal = 10 - this.regenTotal;
+            const heal = Math.min(healThisTick, maxHeal);
+            if (heal > 0) {
+                this.health = Math.min(this.maxHealth, this.health + heal);
+                this.regenTotal += heal;
+            }
+            if (this.regenTimer <= 0) {
+                this.regenTimer = 0;
+            }
+        }
+
+        // Shield buff timer
+        if (this.shieldTimer > 0) {
+            this.shieldTimer -= dt;
+            if (this.shieldTimer <= 0) {
+                this.shieldBuff = false;
+                this.shieldTimer = 0;
+            }
         }
 
         // Attack state machine
