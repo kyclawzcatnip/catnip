@@ -13,7 +13,7 @@ class Game {
         // Power-ups
         this.powerUps = [];
         this.powerUpTimer = 0;
-        this.powerUpInterval = 8 + Math.random() * 7; // 8-15 seconds
+        this.powerUpInterval = 3 + Math.random() * 3; // first spawn 3-6 seconds
 
         this.fighter1 = null;
         this.fighter2 = null;
@@ -241,7 +241,7 @@ class Game {
         effects.clear();
         this.powerUps = [];
         this.powerUpTimer = 0;
-        this.powerUpInterval = 8 + Math.random() * 7;
+        this.powerUpInterval = 3 + Math.random() * 3;
 
         if (this.round <= 2 || (this.fighter1.wins < 2 && this.fighter2.wins < 2)) {
             gameUI.showRoundAnnouncement(`ROUND ${this.round}`);
@@ -905,7 +905,7 @@ class Game {
         this.powerUpTimer += dt;
         if (this.powerUpTimer >= this.powerUpInterval) {
             this.powerUpTimer = 0;
-            this.powerUpInterval = 8 + Math.random() * 7;
+            this.powerUpInterval = 6 + Math.random() * 6;
             this.spawnPowerUp();
         }
 
@@ -913,7 +913,7 @@ class Game {
         for (let i = this.powerUps.length - 1; i >= 0; i--) {
             const p = this.powerUps[i];
             p.time += dt;
-            p.y += 40 * dt; // slow fall speed
+            p.y += 55 * dt; // fall speed
 
             // Remove if fallen below ground
             if (p.y > GROUND_Y + 20) {
