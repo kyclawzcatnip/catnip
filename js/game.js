@@ -24,6 +24,10 @@ class Game {
         this.netDisconnectMsg = '';
         this.netDisconnectTimer = 0;
 
+        // Guest state tracking
+        this.guestPrevState = '';
+        this.guestMatchEndTimer = 0;
+
         // Lobby DOM elements
         this.lobbyOverlay = document.getElementById('lobby-overlay');
         this.lobbyMenu = document.getElementById('lobby-menu');
@@ -421,7 +425,9 @@ class Game {
                 f2: this.serializeFighter(this.fighter2),
                 f1wins: this.fighter1.wins,
                 f2wins: this.fighter2.wins,
-                stateTimer: Math.round(this.stateTimer * 100) / 100
+                stateTimer: Math.round(this.stateTimer * 100) / 100,
+                // Send announcement info so guest can display it
+                announcement: gameUI.showRoundText ? gameUI.roundText : null
             };
             NetworkManager.send(stateData);
         }
@@ -474,8 +480,27 @@ class Game {
     applyHostState(data) {
         if (!this.fighter1 || !this.fighter2) return;
 
+        const prevState = this.guestPrevState;
+        const newState = data.state || this.state;
+
+        // Detect state transitions and trigger guest-side effects
+        if (prevState !== newState) {
+            // Round end → play KO sound and effects
+            if (newState === 'roundEnd' && prevState === 'fighting') {
+                audio.playKO();
+                effects.triggerFlash('#fff');
+                effects.triggerScreenShake(15);
+            }
+            // Match end → start timer to return to menu
+            if (newState === 'matchEnd') {
+                audio.playVictory();
+                this.guestMatchEndTimer = 5;
+            }
+        }
+
         // Apply game state
         if (data.state) this.state = data.state;
+        this.guestPrevState = this.state;
         if (data.round !== undefined) this.round = data.round;
         if (data.timer !== undefined) this.timer = data.timer;
         if (data.stateTimer !== undefined) this.stateTimer = data.stateTimer;
@@ -487,6 +512,14 @@ class Game {
         // Apply wins
         if (data.f1wins !== undefined) this.fighter1.wins = data.f1wins;
         if (data.f2wins !== undefined) this.fighter2.wins = data.f2wins;
+
+        // Apply announcement from host
+        if (data.announcement && data.announcement !== this._lastAnnouncement) {
+            gameUI.showRoundAnnouncement(data.announcement);
+            this._lastAnnouncement = data.announcement;
+        } else if (!data.announcement) {
+            this._lastAnnouncement = null;
+        }
     }
 
     applyFighterState(fighter, data) {
@@ -674,6 +707,17 @@ class Game {
             // Still update effects and UI locally for smooth rendering
             effects.update(dt);
             gameUI.updateAnnouncement(dt);
+
+            // Handle match end — return to menu after delay
+            if (this.state === 'matchEnd') {
+                this.guestMatchEndTimer -= dt;
+                if (this.guestMatchEndTimer <= 0) {
+                    NetworkManager.disconnect();
+                    this.onlineMode = false;
+                    this.isOnlineGuest = false;
+                    this.returnToMenu();
+                }
+            }
 
             // Handle disconnect timer
             if (this.netDisconnectTimer > 0) {
