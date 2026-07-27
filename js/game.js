@@ -799,6 +799,13 @@ class Game {
                 audio.playVictory();
                 this.state = 'matchEnd';
                 this.stateTimer = 0;
+
+                if (typeof incrementQuestProgress === 'function') {
+                    incrementQuestProgress('smash_play');
+                    if (winner === this.fighter1) {
+                        incrementQuestProgress('smash_win');
+                    }
+                }
             } else {
                 gameUI.showRoundAnnouncement(`${winner.name.toUpperCase()} wins round ${this.round}!`);
                 this.round++;
@@ -958,6 +965,12 @@ class Game {
                         audio.playVictory();
                         this.state = 'matchEnd';
                         this.stateTimer = 0;
+                        
+                        if (typeof incrementQuestProgress === 'function') {
+                            incrementQuestProgress('smash_win');
+                            incrementQuestProgress('smash_play');
+                        }
+                        
                         setTimeout(() => this.returnToMenu(), 5000);
                     }
                 }
@@ -1293,6 +1306,26 @@ class Game {
             ctx.fillRect(bx - 8, by + 4, 16 * ratio, 3);
         });
         ctx.restore();
+    }
+}
+
+function incrementQuestProgress(type, amount = 1) {
+    try {
+        const activeQuests = JSON.parse(localStorage.getItem('scw_active_quests') || '[]');
+        let changed = false;
+        for (const q of activeQuests) {
+            if (q.type === type && !q.claimed) {
+                q.progress = Math.min(q.target, q.progress + amount);
+                changed = true;
+            }
+        }
+        if (changed) {
+            localStorage.setItem('scw_active_quests', JSON.stringify(activeQuests));
+            // Trigger storage event so parent page receives it instantly
+            window.dispatchEvent(new Event('storage'));
+        }
+    } catch (e) {
+        console.warn("Failed to increment quest progress in brawler:", e);
     }
 }
 

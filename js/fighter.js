@@ -153,6 +153,10 @@ class Fighter {
         this.attackPhase = 'startup';
         this.stateTimer = 0;
         this.hasHit = false;
+
+        if (typeof incrementQuestProgress === 'function') {
+            incrementQuestProgress('smash_attacks');
+        }
     }
 
     startBlock() {
@@ -174,6 +178,10 @@ class Fighter {
             this.grounded = false;
             this.state = STATES.JUMP;
             this.jumpCount = 1;
+            
+            if (typeof incrementQuestProgress === 'function') {
+                incrementQuestProgress('smash_jumps');
+            }
         } else if (this.doubleJumpBuff && this.jumpCount === 1 && this.canAct()) {
             this.vy = JUMP_FORCE * 0.9;
             this.state = STATES.JUMP;
@@ -690,6 +698,29 @@ class EnemyRat {
             this.state = 'ko';
             this.vy = -250;
             this.grounded = false;
+
+            if (typeof incrementQuestProgress === 'function') {
+                incrementQuestProgress('smash_rats');
+                
+                // Beat Rat King quest
+                if (this.type === 'king') {
+                    incrementQuestProgress('smash_boss');
+                }
+                
+                // Beat all bosses quest
+                if (this.isBoss) {
+                    try {
+                        let beaten = JSON.parse(localStorage.getItem('scw_beaten_bosses') || '[]');
+                        if (!beaten.includes(this.type)) {
+                            beaten.push(this.type);
+                            localStorage.setItem('scw_beaten_bosses', JSON.stringify(beaten));
+                        }
+                        if (beaten.includes('king') && beaten.includes('robo_boss') && beaten.includes('hunter')) {
+                            incrementQuestProgress('smash_boss_all');
+                        }
+                    } catch(err) {}
+                }
+            }
         }
     }
 
