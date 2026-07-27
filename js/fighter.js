@@ -68,6 +68,14 @@ class Fighter {
         this.regenTotal = 0;       // HP healed so far this regen
         this.shieldBuff = false;   // 3x block effectiveness
         this.shieldTimer = 0;      // seconds remaining
+
+        // New Arcade mode buffs
+        this.speedFishTimer = 0;
+        this.giantPawTimer = 0;
+        this.doubleJumpBuff = false;
+        this.laserYarnTimer = 0;
+        this.jumpCount = 0;
+        this.scale = 1;
     }
 
     reset(x, facingRight) {
@@ -95,17 +103,25 @@ class Fighter {
         this.regenTotal = 0;
         this.shieldBuff = false;
         this.shieldTimer = 0;
+        this.speedFishTimer = 0;
+        this.giantPawTimer = 0;
+        this.doubleJumpBuff = false;
+        this.laserYarnTimer = 0;
+        this.jumpCount = 0;
+        this.scale = 1;
     }
 
     get centerX() { return this.x; }
     get centerY() { return this.y - this.height / 2; }
 
     get hitbox() {
+        const w = this.width * (this.scale || 1);
+        const h = this.height * (this.scale || 1);
         return {
-            x: this.x - this.width / 2,
-            y: this.y - this.height,
-            w: this.width,
-            h: this.height
+            x: this.x - w / 2,
+            y: this.y - h,
+            w: w,
+            h: h
         };
     }
 
@@ -114,12 +130,15 @@ class Fighter {
         if (this.attackPhase !== 'active') return null;
 
         const data = ATTACK_DATA[this.attackType];
-        const dir = this.facingRight ? 1 : -1;
+        const scale = this.scale || 1;
+        const range = data.range * scale;
+        const w = this.width * scale;
+        const h = this.height * scale;
         return {
-            x: this.x + (this.facingRight ? this.width / 2 - 10 : -this.width / 2 - data.range + 10),
-            y: this.y - this.height + (this.attackType === 'kick' ? 30 : 15),
-            w: data.range,
-            h: this.attackType === 'kick' ? 30 : 25
+            x: this.x + (this.facingRight ? w / 2 - 10 : -w / 2 - range + 10),
+            y: this.y - h + (this.attackType === 'kick' ? 30 * scale : 15 * scale),
+            w: range,
+            h: this.attackType === 'kick' ? 30 * scale : 25 * scale
         };
     }
 
@@ -149,10 +168,19 @@ class Fighter {
     }
 
     jump() {
-        if (this.grounded && this.canAct() && this.state !== STATES.KO) {
+        if (this.state === STATES.KO) return;
+        if (this.grounded && this.canAct()) {
             this.vy = JUMP_FORCE;
             this.grounded = false;
             this.state = STATES.JUMP;
+            this.jumpCount = 1;
+        } else if (this.doubleJumpBuff && this.jumpCount === 1 && this.canAct()) {
+            this.vy = JUMP_FORCE * 0.9;
+            this.state = STATES.JUMP;
+            this.jumpCount = 2;
+            if (effects && effects.spawnHitParticles) {
+                effects.spawnHitParticles(this.x, this.y - 10, '#d946ef', 6);
+            }
         }
     }
 
@@ -238,6 +266,31 @@ class Fighter {
             }
         }
 
+        // Speed fish buff timer
+        if (this.speedFishTimer > 0) {
+            this.speedFishTimer -= dt;
+            if (this.speedFishTimer <= 0) {
+                this.speedFishTimer = 0;
+            }
+        }
+
+        // Giant paw buff timer
+        if (this.giantPawTimer > 0) {
+            this.giantPawTimer -= dt;
+            if (this.giantPawTimer <= 0) {
+                this.giantPawTimer = 0;
+                this.scale = 1;
+            }
+        }
+
+        // Laser yarn buff timer
+        if (this.laserYarnTimer > 0) {
+            this.laserYarnTimer -= dt;
+            if (this.laserYarnTimer <= 0) {
+                this.laserYarnTimer = 0;
+            }
+        }
+
         // Attack state machine
         if (this.state === STATES.PUNCH || this.state === STATES.KICK) {
             this.stateTimer += dt;
@@ -282,6 +335,7 @@ class Fighter {
             this.vy = 0;
             if (!this.grounded) {
                 this.grounded = true;
+                this.jumpCount = 0;
                 if (this.state === STATES.JUMP) {
                     this.state = STATES.IDLE;
                 }
@@ -303,6 +357,14 @@ class Fighter {
 
     draw(ctx) {
         ctx.save();
+        
+        // Apply scaling
+        if (this.scale && this.scale !== 1) {
+            ctx.translate(this.x, this.y);
+            ctx.scale(this.scale, this.scale);
+            ctx.translate(-this.x, -this.y);
+        }
+
         const drawX = this.x;
         const drawY = this.y;
 
@@ -577,3 +639,541 @@ function checkHit(attacker, defender) {
         atkBox.y < defBox.y + defBox.h &&
         atkBox.y + atkBox.h > defBox.y;
 }
+
+// ===== ENEMY RAT CLASS =====
+class EnemyRat {
+    constructor(x, y, type, isBoss = false) {
+        this.type = type; // 'wizard', 'robot', 'ninja', 'giant', 'ghost', 'king', 'robo_boss', 'hunter'
+        this.isBoss = isBoss;
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.width = type === 'giant' ? 100 : (isBoss ? 110 : 50);
+        this.height = type === 'giant' ? 110 : (isBoss ? 120 : 65);
+        this.health = type === 'giant' ? 200 : (isBoss ? (type === 'king' ? 400 : (type === 'robo_boss' ? 500 : 450)) : 50);
+        if (type === 'robot') this.health = 80;
+        if (type === 'ninja') this.health = 40;
+        this.maxHealth = this.health;
+        this.displayHealth = this.health;
+        this.facingRight = true;
+        this.state = 'idle'; // 'idle', 'walk', 'attack', 'hurt', 'ko'
+        this.stateTimer = 0;
+        this.attackPhase = '';
+        this.animTimer = 0;
+        this.animFrame = 0;
+        this.grounded = true;
+        this.speed = type === 'ninja' ? 190 : (type === 'giant' ? 110 : (type === 'robot' ? 90 : (isBoss ? 130 : 140)));
+        this.attackCooldown = 0;
+        this.shootTimer = 0;
+        this.hurtTimer = 0;
+        this.ghostFloat = 0; // for float movement of ghost rats
+    }
+
+    get hitbox() {
+        return {
+            x: this.x - this.width / 2,
+            y: this.y - this.height,
+            w: this.width,
+            h: this.height
+        };
+    }
+
+    takeHit(damage, knockbackDir, knockbackForce) {
+        if (this.state === 'ko') return;
+        this.health = Math.max(0, this.health - damage);
+        this.vx = knockbackDir * knockbackForce * (this.type === 'giant' || this.isBoss ? 0.3 : 1.0);
+        this.state = 'hurt';
+        this.stateTimer = 0;
+        this.hurtTimer = 0.2;
+        if (this.health <= 0) {
+            this.state = 'ko';
+            this.vy = -250;
+            this.grounded = false;
+        }
+    }
+
+    update(dt, player, gameInstance) {
+        this.animTimer += dt;
+        if (this.animTimer > 0.15) {
+            this.animFrame = (this.animFrame + 1) % 4;
+            this.animTimer = 0;
+        }
+
+        // Smooth health
+        if (this.displayHealth > this.health) {
+            this.displayHealth -= (this.displayHealth - this.health) * 8 * dt;
+            if (this.displayHealth - this.health < 0.5) this.displayHealth = this.health;
+        }
+
+        if (this.state === 'ko') {
+            if (!this.grounded) {
+                this.vy += GRAVITY * dt;
+                this.y += this.vy * dt;
+                if (this.y >= GROUND_Y) {
+                    this.y = GROUND_Y;
+                    this.vy = 0;
+                    this.grounded = true;
+                    this.vx = 0;
+                }
+            }
+            this.x += this.vx * dt;
+            return;
+        }
+
+        if (this.state === 'hurt') {
+            this.hurtTimer -= dt;
+            if (this.hurtTimer <= 0) {
+                this.state = 'idle';
+            }
+            // Apply physics
+            if (!this.grounded && this.type !== 'ghost') {
+                this.vy += GRAVITY * dt;
+            }
+            this.y += this.vy * dt;
+            if (this.y >= GROUND_Y && this.type !== 'ghost') {
+                this.y = GROUND_Y;
+                this.vy = 0;
+                this.grounded = true;
+            }
+            this.x += this.vx * dt;
+            return;
+        }
+
+        // Active State AI
+        if (this.attackCooldown > 0) this.attackCooldown -= dt;
+        this.facingRight = player.x > this.x;
+
+        // Movement & Attack Decision
+        const dist = Math.abs(player.x - this.x);
+        const yDist = Math.abs(player.y - this.y);
+
+        if (this.type === 'ghost') {
+            // Float movement
+            this.ghostFloat += dt * 3;
+            const targetY = GROUND_Y - 120 + Math.sin(this.ghostFloat) * 40;
+            this.y += (targetY - this.y) * 2 * dt;
+            // Move toward player
+            const dir = player.x > this.x ? 1 : -1;
+            this.vx = dir * this.speed;
+            this.x += this.vx * dt;
+
+            // Ghost contact attack
+            if (dist < 40 && yDist < 50 && this.attackCooldown <= 0) {
+                player.takeHit(10, dir, 150);
+                effects.spawnHitParticles(this.x, this.y - 20, '#a78bfa', 8);
+                this.attackCooldown = 1.5;
+            }
+        } else {
+            // Apply gravity
+            if (this.y < GROUND_Y) {
+                this.vy += GRAVITY * dt;
+                this.grounded = false;
+            }
+            this.y += this.vy * dt;
+            if (this.y >= GROUND_Y) {
+                this.y = GROUND_Y;
+                this.vy = 0;
+                this.grounded = true;
+            }
+
+            // Normal ground movement
+            const dir = player.x > this.x ? 1 : -1;
+
+            if (this.type === 'wizard') {
+                // Keep distance and shoot magic projectiles
+                if (dist < 220) {
+                    // Back away
+                    this.vx = -dir * this.speed;
+                    this.state = 'walk';
+                } else if (dist > 350) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = 0;
+                    this.state = 'idle';
+                }
+
+                this.shootTimer += dt;
+                if (this.shootTimer > 2.0 && dist < 450) {
+                    this.shootTimer = 0;
+                    // Spawn magic projectile
+                    gameInstance.projectiles.push({
+                        x: this.x,
+                        y: this.y - this.height / 2,
+                        vx: dir * 350,
+                        vy: 0,
+                        type: 'magic',
+                        fromPlayer: false,
+                        radius: 8
+                    });
+                }
+            } else if (this.type === 'robot') {
+                // Slow advance and fire sparks
+                this.vx = dir * this.speed;
+                this.state = 'walk';
+
+                this.shootTimer += dt;
+                if (this.shootTimer > 2.5 && dist < 350) {
+                    this.shootTimer = 0;
+                    gameInstance.projectiles.push({
+                        x: this.x + dir * 20,
+                        y: this.y - this.height / 2,
+                        vx: dir * 250,
+                        vy: 0,
+                        type: 'spark',
+                        fromPlayer: false,
+                        radius: 6
+                    });
+                }
+            } else if (this.type === 'ninja') {
+                // Dash and rapid strike, occasional teleport
+                if (dist > 80) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = 0;
+                    this.state = 'idle';
+                    if (this.attackCooldown <= 0) {
+                        player.takeHit(12, dir, 200);
+                        effects.spawnHitParticles(player.x, player.y - 30, '#ef4444', 8);
+                        this.attackCooldown = 0.8;
+                    }
+                }
+
+                // Teleport behind player occasionally
+                this.shootTimer += dt;
+                if (this.shootTimer > 5.0 && dist > 150) {
+                    this.shootTimer = 0;
+                    effects.spawnHitParticles(this.x, this.y - 20, '#d946ef', 12);
+                    this.x = player.x - dir * 60;
+                    this.y = player.y;
+                    this.facingRight = player.x > this.x;
+                    effects.spawnHitParticles(this.x, this.y - 20, '#d946ef', 12);
+                }
+            } else if (this.type === 'giant') {
+                // Slow march and smash
+                if (dist > 90) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = 0;
+                    this.state = 'idle';
+                    if (this.attackCooldown <= 0) {
+                        player.takeHit(22, dir, 450);
+                        effects.spawnHitParticles(player.x, player.y - 40, '#f97316', 15);
+                        if (effects.shakeScreen) effects.shakeScreen(15, 0.25);
+                        this.attackCooldown = 2.0;
+                    }
+                }
+            } else if (this.type === 'king') {
+                // Boss Rat King
+                if (dist > 100) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = 0;
+                    this.state = 'idle';
+                    if (this.attackCooldown <= 0) {
+                        player.takeHit(25, dir, 400);
+                        effects.spawnHitParticles(player.x, player.y - 45, '#eab308', 20);
+                        this.attackCooldown = 1.8;
+                    }
+                }
+
+                // Throw crowns
+                this.shootTimer += dt;
+                if (this.shootTimer > 3.0) {
+                    this.shootTimer = 0;
+                    gameInstance.projectiles.push({
+                        x: this.x,
+                        y: this.y - this.height + 20,
+                        vx: dir * 400,
+                        vy: -120, // slightly arched throwing
+                        type: 'crown',
+                        fromPlayer: false,
+                        radius: 12
+                    });
+
+                    // Summon helper rat if below half health
+                    if (this.health < this.maxHealth * 0.5 && gameInstance.enemies.length < 5) {
+                        const summonX = this.x - dir * 80;
+                        gameInstance.enemies.push(new EnemyRat(summonX, GROUND_Y, 'ninja'));
+                        effects.spawnHitParticles(summonX, GROUND_Y - 20, '#a855f7', 10);
+                    }
+                }
+            } else if (this.type === 'robo_boss') {
+                // Boss Robo Rat
+                if (dist > 110) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = 0;
+                    this.state = 'idle';
+                    if (this.attackCooldown <= 0) {
+                        player.takeHit(28, dir, 450);
+                        effects.spawnHitParticles(player.x, player.y - 45, '#3b82f6', 22);
+                        this.attackCooldown = 1.5;
+                    }
+                }
+
+                // Charge attack or fire missile
+                this.shootTimer += dt;
+                if (this.shootTimer > 4.0) {
+                    this.shootTimer = 0;
+                    if (Math.random() < 0.5) {
+                        // Rocket Missile!
+                        gameInstance.projectiles.push({
+                            x: this.x,
+                            y: this.y - this.height / 2,
+                            vx: dir * 550,
+                            vy: 0,
+                            type: 'missile',
+                            fromPlayer: false,
+                            radius: 15
+                        });
+                    } else {
+                        // Robo charge!
+                        this.vx = dir * this.speed * 2.8;
+                        this.state = 'walk';
+                        if (effects.shakeScreen) effects.shakeScreen(10, 0.4);
+                    }
+                }
+            } else if (this.type === 'hunter') {
+                // Boss Cat Hunter
+                if (dist > 160) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = -dir * this.speed * 0.8; // retreat slightly
+                    this.state = 'walk';
+                }
+
+                // Fire arrows or traps
+                this.shootTimer += dt;
+                if (this.shootTimer > 2.2) {
+                    this.shootTimer = 0;
+                    // Hunter tracking arrow
+                    const angle = Math.atan2(player.y - 30 - (this.y - this.height/2), player.x - this.x);
+                    gameInstance.projectiles.push({
+                        x: this.x,
+                        y: this.y - this.height / 2,
+                        vx: Math.cos(angle) * 480,
+                        vy: Math.sin(angle) * 480,
+                        type: 'arrow',
+                        fromPlayer: false,
+                        radius: 8
+                    });
+                }
+            } else {
+                // Default simple enemy rat
+                if (dist > 60) {
+                    this.vx = dir * this.speed;
+                    this.state = 'walk';
+                } else {
+                    this.vx = 0;
+                    this.state = 'idle';
+                    if (this.attackCooldown <= 0) {
+                        player.takeHit(8, dir, 120);
+                        this.attackCooldown = 1.2;
+                    }
+                }
+            }
+
+            this.x += this.vx * dt;
+        }
+
+        // Bounds enforcement
+        if (this.x < 30) this.x = 30;
+        if (this.x > 930) this.x = 930;
+        if (this.vx !== 0 && this.state !== 'ko') {
+            this.state = 'walk';
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+
+        // KO rotation
+        if (this.state === 'ko') {
+            ctx.translate(this.x, this.y);
+            ctx.rotate((this.facingRight ? 1 : -1) * Math.PI / 2.5);
+            ctx.translate(-this.x, -this.y);
+        }
+
+        // Ghost alpha transparency
+        if (this.type === 'ghost') {
+            ctx.globalAlpha = 0.55;
+        }
+
+        const dir = this.facingRight ? 1 : -1;
+        const baseY = this.y - this.height;
+
+        // Draw shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(this.x, GROUND_Y + 1, this.width * 0.4, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Rat body colors matching types
+        let bodyColor = '#78716c';      // default grey/brown
+        let bodyDarkColor = '#57534e';
+        let accessoryColor = '';
+
+        if (this.type === 'wizard') {
+            bodyColor = '#5b21b6';
+            bodyDarkColor = '#3b0764';
+            accessoryColor = '#a855f7';
+        } else if (this.type === 'robot') {
+            bodyColor = '#64748b';
+            bodyDarkColor = '#475569';
+            accessoryColor = '#38bdf8';
+        } else if (this.type === 'ninja') {
+            bodyColor = '#1e293b';
+            bodyDarkColor = '#0f172a';
+            accessoryColor = '#f43f5e';
+        } else if (this.type === 'giant') {
+            bodyColor = '#b45309';
+            bodyDarkColor = '#78350f';
+        } else if (this.type === 'ghost') {
+            bodyColor = '#cbd5e1';
+            bodyDarkColor = '#94a3b8';
+            accessoryColor = '#a78bfa';
+        } else if (this.type === 'king') {
+            bodyColor = '#b45309';
+            bodyDarkColor = '#78350f';
+            accessoryColor = '#eab308'; // Gold crown
+        } else if (this.type === 'robo_boss') {
+            bodyColor = '#334155';
+            bodyDarkColor = '#1e293b';
+            accessoryColor = '#ef4444'; // Red lights
+        } else if (this.type === 'hunter') {
+            bodyColor = '#1b4332'; // Forest green look
+            bodyDarkColor = '#081c15';
+            accessoryColor = '#b7094c';
+        }
+
+        // 1. Long Pink Tail
+        ctx.save();
+        ctx.strokeStyle = '#f472b6';
+        ctx.lineWidth = this.isBoss ? 4 : 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        const tailOffset = Math.sin(this.animTimer * 12 + this.animFrame) * 10;
+        ctx.moveTo(this.x - dir * (this.width * 0.4), baseY + this.height * 0.85);
+        ctx.quadraticCurveTo(
+            this.x - dir * (this.width * 0.75), baseY + this.height * 0.95 + tailOffset,
+            this.x - dir * (this.width * 1.1), baseY + this.height * 0.75 + tailOffset
+        );
+        ctx.stroke();
+        ctx.restore();
+
+        // 2. Rat Body
+        ctx.fillStyle = bodyColor;
+        ctx.beginPath();
+        ctx.ellipse(this.x, baseY + this.height * 0.65, this.width * 0.45, this.height * 0.32, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 3. Belly highlight
+        ctx.fillStyle = this.type === 'robot' || this.type === 'robo_boss' ? '#94a3b8' : '#e7e5e4';
+        ctx.beginPath();
+        ctx.ellipse(this.x + dir * 5, baseY + this.height * 0.7, this.width * 0.25, this.height * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Head
+        ctx.fillStyle = bodyColor;
+        ctx.beginPath();
+        ctx.ellipse(this.x + dir * (this.width * 0.35), baseY + this.height * 0.35, this.width * 0.28, this.height * 0.22, dir * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 5. Pointy Nose Snout
+        ctx.fillStyle = bodyDarkColor;
+        ctx.beginPath();
+        ctx.ellipse(this.x + dir * (this.width * 0.55), baseY + this.height * 0.38, this.width * 0.12, this.height * 0.08, dir * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        // Nose tip
+        ctx.fillStyle = '#f472b6';
+        ctx.beginPath();
+        ctx.arc(this.x + dir * (this.width * 0.66), baseY + this.height * 0.38, this.isBoss ? 4 : 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 6. Round Ears
+        ctx.fillStyle = bodyDarkColor;
+        ctx.beginPath();
+        ctx.arc(this.x - dir * 3, baseY + this.height * 0.15, this.width * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fca5a5'; // Inner pink ear
+        ctx.beginPath();
+        ctx.arc(this.x - dir * 3, baseY + this.height * 0.15, this.width * 0.09, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 7. Eyes
+        ctx.fillStyle = this.type === 'ghost' ? '#a78bfa' : (this.type === 'robot' || this.type === 'robo_boss' ? '#38bdf8' : '#ef4444');
+        ctx.beginPath();
+        ctx.arc(this.x + dir * (this.width * 0.42), baseY + this.height * 0.3, this.isBoss ? 5 : 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 8. Custom Accessories matching Types
+        if (this.type === 'wizard') {
+            // Draw wizard hat
+            ctx.fillStyle = accessoryColor;
+            ctx.beginPath();
+            ctx.moveTo(this.x - dir * 18, baseY + 8);
+            ctx.lineTo(this.x + dir * 12, baseY + 8);
+            ctx.lineTo(this.x - dir * 4, baseY - 22);
+            ctx.closePath();
+            ctx.fill();
+            // Star on hat
+            ctx.fillStyle = '#eab308';
+            ctx.font = '10px Outfit';
+            ctx.fillText('★', this.x - dir * 4, baseY - 5);
+        } else if (this.type === 'robot' || this.type === 'robo_boss') {
+            // Antenna
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(this.x, baseY + 10);
+            ctx.lineTo(this.x, baseY - 12);
+            ctx.stroke();
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(this.x, baseY - 12, 4, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (this.type === 'ninja') {
+            // Headband tails
+            ctx.strokeStyle = accessoryColor;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(this.x - dir * 12, baseY + 24);
+            ctx.lineTo(this.x - dir * 28, baseY + 20 + Math.sin(this.animTimer*10)*4);
+            ctx.stroke();
+        } else if (this.type === 'king') {
+            // King crown
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath();
+            ctx.moveTo(this.x - 22, baseY + 8);
+            ctx.lineTo(this.x + 22, baseY + 8);
+            ctx.lineTo(this.x + 18, baseY - 18);
+            ctx.lineTo(this.x + 5, baseY - 4);
+            ctx.lineTo(this.x, baseY - 24);
+            ctx.lineTo(this.x - 5, baseY - 4);
+            ctx.lineTo(this.x - 18, baseY - 18);
+            ctx.closePath();
+            ctx.fill();
+        } else if (this.type === 'hunter') {
+            // Hunter cap
+            ctx.fillStyle = '#374151';
+            ctx.beginPath();
+            ctx.ellipse(this.x + dir * 4, baseY + 10, 16, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#b7094c'; // Feather on cap
+            ctx.beginPath();
+            ctx.moveTo(this.x - dir * 4, baseY + 8);
+            ctx.quadraticCurveTo(this.x - dir * 16, baseY - 15, this.x - dir * 24, baseY - 12);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+}
+

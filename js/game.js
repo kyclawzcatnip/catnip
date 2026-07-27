@@ -15,6 +15,12 @@ class Game {
         this.powerUpTimer = 0;
         this.powerUpInterval = 3 + Math.random() * 3; // first spawn 3-6 seconds
 
+        // Arcade Campaign mode variables
+        this.arcadeWave = 1;
+        this.arcadeScore = 0;
+        this.enemies = [];
+        this.projectiles = [];
+
         this.fighter1 = null;
         this.fighter2 = null;
         this.botAI = new BotAI();
@@ -53,9 +59,20 @@ class Game {
 
     setupMenu() {
         const menu = document.getElementById('menu-overlay');
+        const btnArcade = document.getElementById('btn-arcade');
         const btnPvB = document.getElementById('btn-pvb');
         const btnPvP = document.getElementById('btn-pvp');
         const btnOnline = document.getElementById('btn-online');
+
+        if (btnArcade) {
+            btnArcade.addEventListener('click', () => {
+                audio.ensureContext();
+                audio.playMenuSelect();
+                this.mode = 'arcade';
+                menu.classList.add('hidden');
+                this.startArcadeMode();
+            });
+        }
 
         btnPvB.addEventListener('click', () => {
             audio.ensureContext();
@@ -232,6 +249,82 @@ class Game {
         this.startRound();
     }
 
+    startArcadeMode() {
+        this.fighter1 = new Fighter(250, true, CAT_COLORS.orange, 'Ginger');
+        this.fighter2 = null; // No second player in arcade
+        this.arcadeWave = 1;
+        this.arcadeScore = 0;
+        this.enemies = [];
+        this.projectiles = [];
+        this.startArcadeWave();
+    }
+
+    startArcadeWave() {
+        this.fighter1.reset(250, true);
+        this.enemies = [];
+        this.projectiles = [];
+        this.powerUps = [];
+        this.powerUpTimer = 0;
+        this.powerUpInterval = 2 + Math.random() * 2;
+        this.timer = 99; // More time for arcade waves!
+        this.state = 'roundStart';
+        this.stateTimer = 0;
+        if (effects && effects.clear) effects.clear();
+
+        // Wave announcements
+        let name = `WAVE ${this.arcadeWave}`;
+        if (this.arcadeWave === 5) name = "BOSS: RAT KING";
+        else if (this.arcadeWave === 7) name = "BOSS: ROBO RAT";
+        else if (this.arcadeWave === 8) name = "FINAL BOSS: CAT HUNTER";
+
+        gameUI.showRoundAnnouncement(name);
+        audio.playRoundStart();
+
+        this.spawnEnemiesForWave();
+    }
+
+    spawnEnemiesForWave() {
+        if (this.arcadeWave === 1) {
+            // 3 normal rats
+            this.enemies.push(new EnemyRat(500, GROUND_Y, 'normal'));
+            this.enemies.push(new EnemyRat(680, GROUND_Y, 'normal'));
+            this.enemies.push(new EnemyRat(850, GROUND_Y, 'normal'));
+        } else if (this.arcadeWave === 2) {
+            // 2 normal, 2 wizard rats
+            this.enemies.push(new EnemyRat(550, GROUND_Y, 'normal'));
+            this.enemies.push(new EnemyRat(650, GROUND_Y, 'wizard'));
+            this.enemies.push(new EnemyRat(780, GROUND_Y, 'normal'));
+            this.enemies.push(new EnemyRat(880, GROUND_Y, 'wizard'));
+        } else if (this.arcadeWave === 3) {
+            // 2 normal, 2 robot rats
+            this.enemies.push(new EnemyRat(600, GROUND_Y, 'robot'));
+            this.enemies.push(new EnemyRat(700, GROUND_Y, 'normal'));
+            this.enemies.push(new EnemyRat(800, GROUND_Y, 'robot'));
+            this.enemies.push(new EnemyRat(900, GROUND_Y, 'normal'));
+        } else if (this.arcadeWave === 4) {
+            // 2 ninja, 2 wizard rats
+            this.enemies.push(new EnemyRat(500, GROUND_Y, 'ninja'));
+            this.enemies.push(new EnemyRat(650, GROUND_Y, 'wizard'));
+            this.enemies.push(new EnemyRat(780, GROUND_Y, 'ninja'));
+            this.enemies.push(new EnemyRat(880, GROUND_Y, 'wizard'));
+        } else if (this.arcadeWave === 5) {
+            // BOSS: Rat King
+            this.enemies.push(new EnemyRat(800, GROUND_Y, 'king', true));
+        } else if (this.arcadeWave === 6) {
+            // 2 giant, 2 ghost rats
+            this.enemies.push(new EnemyRat(550, GROUND_Y, 'ghost'));
+            this.enemies.push(new EnemyRat(680, GROUND_Y, 'giant'));
+            this.enemies.push(new EnemyRat(800, GROUND_Y, 'ghost'));
+            this.enemies.push(new EnemyRat(880, GROUND_Y, 'giant'));
+        } else if (this.arcadeWave === 7) {
+            // BOSS: Robo Rat
+            this.enemies.push(new EnemyRat(800, GROUND_Y, 'robo_boss', true));
+        } else if (this.arcadeWave === 8) {
+            // BOSS: Cat Hunter
+            this.enemies.push(new EnemyRat(800, GROUND_Y, 'hunter', true));
+        }
+    }
+
     startRound() {
         this.fighter1.reset(250, true);
         this.fighter2.reset(710, false);
@@ -257,13 +350,14 @@ class Game {
         // Player 1 controls (WASD + FG) — always local on the host or in local modes
         if (this.fighter1.state !== STATES.KO) {
             // Movement
+            const currentSpeed = MOVE_SPEED * (this.fighter1.speedFishTimer > 0 ? 1.65 : 1.0);
             if (keys['KeyA'] && this.fighter1.canAct()) {
-                this.fighter1.vx = -MOVE_SPEED;
+                this.fighter1.vx = -currentSpeed;
                 if (this.fighter1.grounded && this.fighter1.state !== STATES.PUNCH && this.fighter1.state !== STATES.KICK) {
                     this.fighter1.state = STATES.WALK;
                 }
             } else if (keys['KeyD'] && this.fighter1.canAct()) {
-                this.fighter1.vx = MOVE_SPEED;
+                this.fighter1.vx = currentSpeed;
                 if (this.fighter1.grounded && this.fighter1.state !== STATES.PUNCH && this.fighter1.state !== STATES.KICK) {
                     this.fighter1.state = STATES.WALK;
                 }
@@ -288,10 +382,36 @@ class Game {
             if (keys['KeyF']) {
                 this.fighter1.startAttack('punch');
                 keys['KeyF'] = false; // Prevent repeat
+                if (this.fighter1.laserYarnTimer > 0) {
+                    const dir = this.fighter1.facingRight ? 1 : -1;
+                    this.projectiles.push({
+                        x: this.fighter1.x + dir * (this.fighter1.width * 0.6),
+                        y: this.fighter1.y - (this.fighter1.height * (this.fighter1.scale || 1) * 0.6),
+                        vx: dir * 650,
+                        vy: 0,
+                        type: 'laser',
+                        fromPlayer: true,
+                        radius: 8,
+                        time: 0
+                    });
+                }
             }
             if (keys['KeyG']) {
                 this.fighter1.startAttack('kick');
                 keys['KeyG'] = false;
+                if (this.fighter1.laserYarnTimer > 0) {
+                    const dir = this.fighter1.facingRight ? 1 : -1;
+                    this.projectiles.push({
+                        x: this.fighter1.x + dir * (this.fighter1.width * 0.6),
+                        y: this.fighter1.y - (this.fighter1.height * (this.fighter1.scale || 1) * 0.5),
+                        vx: dir * 650,
+                        vy: 0,
+                        type: 'laser',
+                        fromPlayer: true,
+                        radius: 8,
+                        time: 0
+                    });
+                }
             }
         }
 
@@ -775,9 +895,77 @@ class Game {
             }
 
             this.handleInput(dt);
-            this.fighter1.update(dt, this.fighter2);
-            this.fighter2.update(dt, this.fighter1);
-            this.checkHits();
+
+            if (this.mode === 'arcade') {
+                // Find nearest active enemy rat to face
+                let target = null;
+                let minDist = Infinity;
+                for (const e of this.enemies) {
+                    if (e.state !== 'ko') {
+                        const d = Math.abs(e.x - this.fighter1.x);
+                        if (d < minDist) {
+                            minDist = d;
+                            target = e;
+                        }
+                    }
+                }
+                this.fighter1.update(dt, target);
+
+                // Update enemies
+                for (const e of this.enemies) {
+                    e.update(dt, this.fighter1, this);
+                }
+
+                // Update projectiles
+                this.updateProjectiles(dt);
+
+                // Check hits
+                this.checkArcadeHits();
+
+                // Check player KO (defeat)
+                if (this.fighter1.health <= 0) {
+                    this.state = 'matchEnd';
+                    this.stateTimer = 0;
+                    gameUI.showRoundAnnouncement('GAME OVER');
+                    audio.playKO();
+                    setTimeout(() => this.returnToMenu(), 3500);
+                }
+
+                // Check wave clear
+                if (this.enemies.length > 0 && this.enemies.every(e => e.state === 'ko')) {
+                    this.state = 'roundEnd';
+                    this.stateTimer = 0;
+                    
+                    // Wave clear reward
+                    const bonusCoins = this.arcadeWave * 25;
+                    this.arcadeScore += this.arcadeWave * 1000;
+                    if (effects && effects.addFloatingText) {
+                        effects.addFloatingText(this.fighter1.x, this.fighter1.y - 60, `+${bonusCoins} COINS`, '#ffd700', 20);
+                    }
+                    
+                    // If dashboard sync is loaded, add to coins!
+                    if (typeof addCoins === 'function') {
+                        addCoins(bonusCoins);
+                    }
+
+                    if (this.arcadeWave < 8) {
+                        gameUI.showRoundAnnouncement('WAVE CLEARED!');
+                        audio.playVictory();
+                        this.arcadeWave++;
+                        setTimeout(() => this.startArcadeWave(), 3000);
+                    } else {
+                        gameUI.showRoundAnnouncement('VICTORY! ARCADE COMPLETED');
+                        audio.playVictory();
+                        this.state = 'matchEnd';
+                        this.stateTimer = 0;
+                        setTimeout(() => this.returnToMenu(), 5000);
+                    }
+                }
+            } else {
+                this.fighter1.update(dt, this.fighter2);
+                this.fighter2.update(dt, this.fighter1);
+                this.checkHits();
+            }
 
             // Power-up system
             this.updatePowerUps(dt);
@@ -785,8 +973,16 @@ class Game {
 
         // Round end / match end - still update physics for falling bodies
         if (this.state === 'roundEnd' || this.state === 'matchEnd') {
-            this.fighter1.update(dt, this.fighter2);
-            this.fighter2.update(dt, this.fighter1);
+            if (this.mode === 'arcade') {
+                this.fighter1.update(dt, null);
+                for (const e of this.enemies) {
+                    e.update(dt, this.fighter1, this);
+                }
+                this.updateProjectiles(dt);
+            } else {
+                this.fighter1.update(dt, this.fighter2);
+                this.fighter2.update(dt, this.fighter1);
+            }
             this.stateTimer += dt;
 
             // Match end - return to menu after delay
@@ -827,9 +1023,16 @@ class Game {
 
         if (this.state === 'menu' || this.state === 'lobby') return;
 
-        // Draw fighters
+        // Draw fighters / enemies / projectiles
         if (this.fighter1) this.fighter1.draw(ctx);
-        if (this.fighter2) this.fighter2.draw(ctx);
+        if (this.mode === 'arcade') {
+            for (const e of this.enemies) {
+                e.draw(ctx);
+            }
+            this.drawProjectiles(ctx);
+        } else {
+            if (this.fighter2) this.fighter2.draw(ctx);
+        }
 
         // Draw effects
         effects.draw(ctx);
@@ -839,11 +1042,17 @@ class Game {
 
         // Draw buff indicators on fighters
         if (this.fighter1) this.drawBuffIndicators(ctx, this.fighter1);
-        if (this.fighter2) this.drawBuffIndicators(ctx, this.fighter2);
+        if (this.mode !== 'arcade' && this.fighter2) this.drawBuffIndicators(ctx, this.fighter2);
 
         // Draw HUD
-        if (this.fighter1 && this.fighter2) {
-            gameUI.drawHUD(ctx, this.fighter1, this.fighter2, this.timer, this.round);
+        if (this.mode === 'arcade') {
+            if (this.fighter1) {
+                gameUI.drawArcadeHUD(ctx, this.fighter1, this.enemies, this.timer, this.arcadeWave, this.arcadeScore);
+            }
+        } else {
+            if (this.fighter1 && this.fighter2) {
+                gameUI.drawHUD(ctx, this.fighter1, this.fighter2, this.timer, this.round);
+            }
         }
 
         // Draw announcement
@@ -888,7 +1097,10 @@ class Game {
     // ===== POWER-UP SYSTEM =====
 
     spawnPowerUp() {
-        const types = ['regen', 'shield'];
+        let types = ['regen', 'shield'];
+        if (this.mode === 'arcade') {
+            types = ['regen', 'shield', 'speed_fish', 'giant_paw', 'double_jump', 'laser_yarn'];
+        }
         const type = types[Math.floor(Math.random() * types.length)];
         const x = 100 + Math.random() * 760; // within arena bounds
         this.powerUps.push({
@@ -923,7 +1135,7 @@ class Game {
 
             // Check collision with fighters
             const pSize = 18;
-            const fighters = [this.fighter1, this.fighter2];
+            const fighters = [this.fighter1, this.fighter2].filter(Boolean);
             for (const f of fighters) {
                 if (f.state === STATES.KO) continue;
                 const dx = Math.abs(p.x - f.x);
@@ -931,10 +1143,22 @@ class Game {
                 if (dx < pSize + f.width / 2 && dy < pSize + f.height / 2) {
                     // Collect!
                     this.applyPowerUp(f, p.type);
-                    effects.spawnHitParticles(p.x, p.y, p.type === 'regen' ? '#22c55e' : '#3b82f6', 10);
-                    effects.addFloatingText(p.x, p.y - 20,
-                        p.type === 'regen' ? '+REGEN' : '+SHIELD',
-                        p.type === 'regen' ? '#22c55e' : '#3b82f6', 18);
+                    
+                    let color = '#3b82f6';
+                    let label = '+SHIELD';
+                    if (p.type === 'regen') { color = '#22c55e'; label = '+REGEN'; }
+                    else if (p.type === 'speed_fish') { color = '#10b981'; label = '+SPEED'; }
+                    else if (p.type === 'giant_paw') { color = '#f59e0b'; label = '+GIANT'; }
+                    else if (p.type === 'double_jump') { color = '#d946ef'; label = '+DOUBLE JUMP'; }
+                    else if (p.type === 'laser_yarn') { color = '#ef4444'; label = '+LASER'; }
+
+                    if (effects && effects.spawnHitParticles) {
+                        effects.spawnHitParticles(p.x, p.y, color, 10);
+                    }
+                    if (effects && effects.addFloatingText) {
+                        effects.addFloatingText(p.x, p.y - 20, label, color, 18);
+                    }
+                    
                     audio.playPowerUp();
                     this.powerUps.splice(i, 1);
                     break;
@@ -950,6 +1174,16 @@ class Game {
         } else if (type === 'shield') {
             fighter.shieldBuff = true;
             fighter.shieldTimer = 5;
+        } else if (type === 'speed_fish') {
+            fighter.speedFishTimer = 5;
+        } else if (type === 'giant_paw') {
+            fighter.scale = 1.6;
+            fighter.giantPawTimer = 6;
+        } else if (type === 'double_jump') {
+            fighter.doubleJumpBuff = true;
+            fighter.jumpCount = 0;
+        } else if (type === 'laser_yarn') {
+            fighter.laserYarnTimer = 8;
         }
     }
 
@@ -962,20 +1196,50 @@ class Game {
 
             ctx.save();
 
-            // Glow
-            ctx.shadowColor = p.type === 'regen' ? '#22c55e' : '#3b82f6';
+            // Glow & Colors
+            let glowColor = '#3b82f6';
+            let icon = '🛡️';
+            let circleColor = `rgba(59, 130, 246, ${glow})`;
+            let borderColor = '#60a5fa';
+
+            if (p.type === 'regen') {
+                glowColor = '#22c55e';
+                icon = '❤️';
+                circleColor = `rgba(34, 197, 94, ${glow})`;
+                borderColor = '#4ade80';
+            } else if (p.type === 'speed_fish') {
+                glowColor = '#10b981';
+                icon = '🐟';
+                circleColor = `rgba(16, 185, 129, ${glow})`;
+                borderColor = '#34d399';
+            } else if (p.type === 'giant_paw') {
+                glowColor = '#f59e0b';
+                icon = '🐾';
+                circleColor = `rgba(245, 158, 11, ${glow})`;
+                borderColor = '#fbbf24';
+            } else if (p.type === 'double_jump') {
+                glowColor = '#d946ef';
+                icon = '👟';
+                circleColor = `rgba(217, 70, 239, ${glow})`;
+                borderColor = '#f472b6';
+            } else if (p.type === 'laser_yarn') {
+                glowColor = '#ef4444';
+                icon = '🧶';
+                circleColor = `rgba(239, 68, 68, ${glow})`;
+                borderColor = '#f87171';
+            }
+
+            ctx.shadowColor = glowColor;
             ctx.shadowBlur = 15 + Math.sin(p.time * 5) * 5;
 
             // Background circle
-            ctx.fillStyle = p.type === 'regen'
-                ? `rgba(34, 197, 94, ${glow})`
-                : `rgba(59, 130, 246, ${glow})`;
+            ctx.fillStyle = circleColor;
             ctx.beginPath();
             ctx.arc(px, py, 16, 0, Math.PI * 2);
             ctx.fill();
 
             // Border
-            ctx.strokeStyle = p.type === 'regen' ? '#4ade80' : '#60a5fa';
+            ctx.strokeStyle = borderColor;
             ctx.lineWidth = 2;
             ctx.stroke();
 
@@ -986,7 +1250,7 @@ class Game {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#fff';
-            ctx.fillText(p.type === 'regen' ? '❤️' : '🛡️', px, py);
+            ctx.fillText(icon, px, py);
 
             ctx.restore();
         }
@@ -995,17 +1259,26 @@ class Game {
     drawBuffIndicators(ctx, fighter) {
         let indicators = [];
         if (fighter.regenTimer > 0) {
-            indicators.push({ icon: '❤️', color: '#22c55e', timer: fighter.regenTimer });
+            indicators.push({ icon: '❤️', color: '#22c55e', timer: fighter.regenTimer, max: 3 });
         }
-        if (fighter.shieldBuff) {
-            indicators.push({ icon: '🛡️', color: '#3b82f6', timer: fighter.shieldTimer });
+        if (fighter.shieldBuff && fighter.shieldTimer > 0) {
+            indicators.push({ icon: '🛡️', color: '#3b82f6', timer: fighter.shieldTimer, max: 5 });
+        }
+        if (fighter.speedFishTimer > 0) {
+            indicators.push({ icon: '🐟', color: '#10b981', timer: fighter.speedFishTimer, max: 5 });
+        }
+        if (fighter.giantPawTimer > 0) {
+            indicators.push({ icon: '🐾', color: '#f59e0b', timer: fighter.giantPawTimer, max: 6 });
+        }
+        if (fighter.laserYarnTimer > 0) {
+            indicators.push({ icon: '🧶', color: '#ef4444', timer: fighter.laserYarnTimer, max: 8 });
         }
         if (indicators.length === 0) return;
 
         ctx.save();
         indicators.forEach((ind, i) => {
             const bx = fighter.x - 12 + i * 22;
-            const by = fighter.y - fighter.height - 20;
+            const by = fighter.y - (fighter.height * (fighter.scale || 1)) - 20;
 
             // Small icon above head
             ctx.font = '12px Outfit';
@@ -1013,8 +1286,7 @@ class Game {
             ctx.fillText(ind.icon, bx, by);
 
             // Timer bar underneath
-            const maxTime = ind.icon === '❤️' ? 3 : 5;
-            const ratio = ind.timer / maxTime;
+            const ratio = ind.timer / ind.max;
             ctx.fillStyle = 'rgba(0,0,0,0.5)';
             ctx.fillRect(bx - 8, by + 4, 16, 3);
             ctx.fillStyle = ind.color;

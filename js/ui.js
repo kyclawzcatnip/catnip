@@ -301,6 +301,63 @@ class GameUI {
             ctx.fillStyle = 'rgba(30, 27, 75, 0.8)';
         }
     }
+
+    drawArcadeHUD(ctx, player, enemies, timer, wave, score) {
+        const W = ctx.canvas.width;
+
+        // HUD panel background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.beginPath();
+        ctx.roundRect(20, 15, W - 40, 50, 8);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Player health bar (left side)
+        this.drawHealthBar(ctx, 30, 22, 360, 20, player, false);
+
+        // Player Name and Score
+        ctx.font = 'bold 13px Outfit';
+        ctx.fillStyle = '#f59e0b';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${player.name}  [SCORE: ${score}]`, 32, 55);
+
+        // Timer
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 28px Outfit';
+        const timerSec = Math.ceil(timer);
+        ctx.fillStyle = timerSec <= 10 ? '#ef4444' : '#fff';
+        ctx.fillText(timerSec.toString(), W / 2, 48);
+
+        // Wave text
+        ctx.font = '12px Outfit';
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText(`WAVE ${wave}`, W / 2, 25);
+
+        // Right side: active boss health bar or count of remaining enemies
+        const activeBoss = enemies.find(e => e.isBoss && e.state !== 'ko');
+        if (activeBoss) {
+            // Draw boss health bar
+            this.drawHealthBar(ctx, W - 390, 22, 360, 20, activeBoss, true);
+            
+            // Boss name
+            ctx.font = 'bold 13px Outfit';
+            ctx.fillStyle = '#ef4444';
+            ctx.textAlign = 'right';
+            let bossName = 'RAT KING';
+            if (activeBoss.type === 'robo_boss') bossName = 'ROBO RAT';
+            else if (activeBoss.type === 'hunter') bossName = 'CAT HUNTER';
+            ctx.fillText(bossName, W - 32, 55);
+        } else {
+            // Draw remaining enemies count
+            const remaining = enemies.filter(e => e.state !== 'ko').length;
+            ctx.font = 'bold 15px Outfit';
+            ctx.fillStyle = '#a78bfa';
+            ctx.textAlign = 'right';
+            ctx.fillText(`RATS REMAINING: ${remaining}`, W - 32, 43);
+        }
+    }
 }
 
 const gameUI = new GameUI();

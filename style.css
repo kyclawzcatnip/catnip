@@ -162,6 +162,12 @@ body {
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
 }
 
+.arcade-btn:hover {
+    border-color: #fef08a;
+    background: linear-gradient(135deg, #fbbf24, #ca8a04) !important;
+    box-shadow: 0 12px 40px rgba(234, 179, 8, 0.4);
+}
+
 .pvb-btn:hover {
     border-color: #f59e0b;
     background: rgba(245, 158, 11, 0.15);
